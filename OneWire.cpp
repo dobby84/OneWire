@@ -4,23 +4,24 @@
 * Created: 05.11.2021 15:12:18
 * Author : Manuel
 */
+
 //#define OVERRIDE
 
 #ifndef OVERRIDE			/* Time definition from Maxim application node */
-	#define _timeA 6		//Write: time for "1" bit
-	#define _timeB 54		//Write: time keep bus high after writing "1" bit (64us - 10us = 54us)
-	#define _timeC 54		//Write: time for "0" bit (60us - 6us = 54us)
-	#define _timeD 10		//Write: time keep bus high after writing "0" bit
-	#define _timeE 9		//Read: time until sample input state
-	#define _timeF 55		//Read: time for recovery after reading
-	#define _timeH 480		//Reset: time for drive bus low
-	#define _timeI 70		//Reset: time until sample input state
-	#define _timeG 0		//Reset: delay before reset pulse
-	#define _timeJ 410		//Reset: time for become bus high after present pulse
+	#define _timeA 6		// Write: time for "1" bit
+	#define _timeB 54		// Write: time keep bus high after writing "1" bit (64us - 10us = 54us)
+	#define _timeC 54		// Write: time for "0" bit (60us - 6us = 54us)
+	#define _timeD 10		// Write: time keep bus high after writing "0" bit
+	#define _timeE 9		// Read: time until sample input state
+	#define _timeF 55		// Read: time for recovery after reading
+	#define _timeH 480		// Reset: time for drive bus low
+	#define _timeI 70		// Reset: time until sample input state
+	#define _timeG 0		// Reset: delay before reset pulse
+	#define _timeJ 410		// Reset: time for become bus high after present pulse
 #else
-	#define	_timeH 70		//Reset: time for drive bus low
-	#define	_timeI 8.5 		//Reset: time for release bus
-	#define	_timeG 2.5		//Reset: delay before reset pulse
+	#define	_timeH 70		// Reset: time for drive bus low
+	#define	_timeI 8.5 		// Reset: time for release bus
+	#define	_timeG 2.5		// Reset: delay before reset pulse
 #endif
 
 
@@ -54,9 +55,9 @@ OwInterface::OwInterface(volatile uint8_t* ddir, volatile uint8_t* port, volatil
 	ddir_ = (uint8_t*)ddir;
 	port_ = (uint8_t*)port;
 	pinr_ = (uint8_t*)pinr;
-	pin_ = (1 << pin);			//save configured pin number
-	*ddir_ &= (~pin_);			//config pin as input
-	*port_ &= (~pin_);			//set output register drive pin low
+	pin_ = (1 << pin);			// save configured pin number
+	*ddir_ &= (~pin_);			// config pin as input
+	*port_ &= (~pin_);			// set output register drive pin low
 }
 
 bool OwInterface::reset(){
@@ -163,7 +164,7 @@ bool OwDevice::search(){
 	lastZero_ = 0;
 	byteMask_ = 0;
 	bitMask_ = 1;
-	//start search with one wire command 0xF0
+	// start search with one wire command 0xF0
 	(*bus_).sendByte(0xF0);
 		
 	do{
@@ -216,7 +217,7 @@ bool OwDevice::search(){
 	lastDiscrepancy_ = lastZero_;
 	
 	if (lastDiscrepancy_ == 0) lastDeviceFlag_ = true;
-	if ((calcCRC8((uint8_t*)romNo_, 8)) == 0){  //(calcCRC8((uint8_t*)romNo_, 8))==0
+	if ((calcCRC8((uint8_t*)romNo_, 8)) == 0){  // (calcCRC8((uint8_t*)romNo_, 8))==0
 		return 1;
 	}
 	else{
@@ -227,7 +228,7 @@ bool OwDevice::search(){
 	}
 }
 
-void OwDevice::resetSearch(){  //experimental
+void OwDevice::resetSearch(){  // experimental
 	lastDiscrepancy_ = 0;
 	lastFamilyDiscrepancy_ = 0;
 	lastDeviceFlag_ = false;
@@ -242,7 +243,7 @@ uint8_t OwDevice::calcCRC8(const uint8_t *data, uint8_t len){
 			uint8_t sum = (crc8 ^ extract) & 0x01;
 			crc8 >>= 1;
 			if (sum) {
-				crc8 ^= 0x8C; //Polynom x^8 + x^5 + x^4 + 1
+				crc8 ^= 0x8C; // Polynom x^8 + x^5 + x^4 + 1
 			}
 			extract >>= 1;
 		}
@@ -279,7 +280,7 @@ bool OwDS18B20::setResolution(uint8_t resolution){
 }
 
 uint8_t OwDS18B20::getResolution(){
-	uint8_t command[] {0xCC, 0xBE};		//* eventuell einzelne Befehle und schleife ausrollen
+	uint8_t command[] {0xCC, 0xBE};		//* maybe single commands and roll out the loop 
 	uint8_t data[9];
 	int i;
 	
@@ -308,7 +309,7 @@ void OwDS18B20::convertTemp(bool singleMode){
 }
 
 uint8_t OwDS18B20::receiveTemp(bool singleMode){
-	uint8_t command[] {0xCC, 0xBE};			//* eventuell einzelne Befehle und schleife ausrollen
+	uint8_t command[] {0xCC, 0xBE};			//* maybe single commands and roll out the loop 
 	int i;
 	
 	if(!(*interface_).reset()) return 0;

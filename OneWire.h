@@ -17,23 +17,23 @@ class OwDevice;
 * OneWire Interface
 *
 * Class provide low level communication on a physical interface. The class handles interface
-* configuration, reset routine and bit bit bang communication.
+* configuration, reset routine and bit bang communication.
 ---------------------------------------------------------------------------------------------------
 */
 class OwInterface{
 	private:
-		uint8_t* ddir_;		//Data direction register
-		uint8_t* port_;		//Port out register
-		uint8_t* pinr_;		//Port in register
-		uint8_t  pin_;		//Pin of IO register
+		uint8_t* ddir_;		// Data direction register
+		uint8_t* port_;		// Port out register
+		uint8_t* pinr_;		// Port in register
+		uint8_t  pin_;		// Pin of IO register
 	public:
 		bool reset();
 		void writeBit(int);
 		bool readBit();
 		
 		OwInterface(volatile uint8_t*, volatile uint8_t*,
-		            volatile uint8_t*, const uint8_t);		//Constructor
-		~OwInterface();										//Destructor
+		            volatile uint8_t*, const uint8_t);		// Constructor
+		~OwInterface();										// Destructor
 };
 
 /*-------------------------------------------------------------------------------------------------
@@ -45,8 +45,8 @@ class OwInterface{
 */
 class OwBus{
 	private:
-		OwInterface* interface_;	//pointer to binded interface
-		bool singleDevice_;			//set bit means only one device is on bus
+		OwInterface* interface_;	// pointer to binded interface
+		bool singleDevice_;			// set bit means only one device is on bus
 		bool isBussy_;
 	public:
 		bool reset();
@@ -54,7 +54,7 @@ class OwBus{
 		bool getSingleDevice();
 		void sendByte(uint8_t);
 		uint8_t receiveByte();
-		//void sendStream(uint8_t);
+		// void sendStream(uint8_t);
 		OwBus(OwInterface&);
 		
 		friend class OwDevice;
@@ -72,7 +72,7 @@ class OwBus{
 class OwDevice{
 	protected:
 		OwInterface* interface_;
-		OwBus* bus_;				//pointer to binded bus
+		OwBus* bus_;				// pointer to binded bus
 	private:
 		uint8_t _instances = 0;
 		//* variables for OneWire Search
