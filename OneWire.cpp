@@ -5,9 +5,9 @@
 * Author : Manuel
 */
 
-//#define OVERRIDE
+//#define OVERDRIVE
 
-#ifndef OVERRIDE			/* Time definition from Maxim application node */
+#ifndef OVERDRIVE			/* Time definition from Maxim application node */
 	#define _timeA 6		// Write: time for "1" bit
 	#define _timeB 54		// Write: time keep bus high after writing "1" bit (64us - 10us = 54us)
 	#define _timeC 54		// Write: time for "0" bit (60us - 6us = 54us)
@@ -23,6 +23,12 @@
 	#define	_timeI 8.5 		// Reset: time for release bus
 	#define	_timeG 2.5		// Reset: delay before reset pulse
 #endif
+
+#define MATCH_ROM 0x55
+#define SKIP_ROM 0xCC
+#define READ_SCRATCH 0xBE
+#define CONVERT_T 0x44
+#define WRITE_SCRATCH 0x4E
 
 
 #define F_CPU 16000000UL
@@ -102,14 +108,6 @@ OwBus::OwBus(OwInterface& interface){
 
 bool OwBus::reset(){
 	return (*interface_).reset();
-}
-
-void OwBus::setSingleDevice(bool mode){
-	singleDevice_ = mode;
-}
-
-bool OwBus::getSingleDevice(){
-	return singleDevice_;
 }
 
 void OwBus::sendByte(uint8_t bData){
@@ -267,64 +265,90 @@ OwDS18B20::OwDS18B20(OwBus& bus) : OwDevice::OwDevice (bus){
 	bus_ = &bus;
 }
 
-bool OwDS18B20::setResolution(uint8_t resolution){
-	uint8_t commandSet[5] {0xCC, 0x4E, 0x0, 0x0, 0x0};
+bool OwDS18B20::setResolution(uint8_t* address, uint8_t resolution){
+	uint8_t commandSet[3] {0x0, 0x0, 0x0};
 	int i = 0;
 
-	commandSet[4] = ((resolution - 9) << 5) + 0x1F;
-	if (!(*interface_).reset()) return 0;
-	for (i = 0; i < 5; i++){				// Loop to write each bit in the byte, LS-bit first
-		(*bus_).sendByte(commandSet[i]);	// shift the data byte for the next bit
+	if(!(*interface_).reset()) return 0;			// if reset fault return with 0
+	if (!address){									// ROM address not set only select device with 0xCC (SkipROM)
+		(*bus_).sendByte(SKIP_ROM);
 	}
-	return 1;
+	else{
+		(*bus_).sendByte(MATCH_ROM);				// ROM address is set select device with 0x55 (MatchROM)
+		for (i = 0; i < 8; i++){					// Loop to write ROM address to bus
+			(*bus_).sendByte(*(address + i));
+		}
+	}
+	(*bus_).sendByte(WRITE_SCRATCH);
+	commandSet[2] = ((resolution - 9) << 5) + 0x1F;
+	for (i = 0; i < 3; i++){						// Loop to write each bit in the byte, LS-bit first
+		(*bus_).sendByte(commandSet[i]);			// shift the data byte for the next bit
+	}
+	if (getResolution(address) == resolution) return 1;
+	return 0;
 }
 
-uint8_t OwDS18B20::getResolution(){
-	uint8_t command[] {0xCC, 0xBE};		//* maybe single commands and roll out the loop 
+uint8_t OwDS18B20::getResolution(uint8_t* address){
 	uint8_t data[9];
 	int i;
 	
-	if(!(*interface_).reset()) return 0;
-	for (i = 0; i < 2; i++){			// Loop to write each bit in the byte, LS-bit first
-		(*bus_).sendByte(command[i]);	// shift the data byte for the next bit
+	if(!(*interface_).reset()) return 0;			// if reset fault return with 0
+	if (!address){									// ROM address not set only select device with 0xCC (SkipROM)
+		(*bus_).sendByte(SKIP_ROM);
 	}
-	i = 0;
-	for (i = 0; i < 9; i++){
-		data[i] = (*bus_).receiveByte();
-	}
-	if (calcCRC8(data,9)) return 0;
-	return (data[4] >> 5) + 9;
-}
-
-void OwDS18B20::convertTemp(bool singleMode){
-	uint8_t command[] {0xCC, 0x44};	
-	int i;
-	
-	if (!(*interface_).reset()) return;
-	if (singleMode){
-		for (i = 0; i < 2; i++){			// Loop to write each bit in the byte, LS-bit first
-			(*bus_).sendByte(command[i]);	// shift the data byte for the next bit
-		}		
-	}
-}
-
-uint8_t OwDS18B20::receiveTemp(bool singleMode){
-	uint8_t command[] {0xCC, 0xBE};			//* maybe single commands and roll out the loop 
-	int i;
-	
-	if(!(*interface_).reset()) return 0;
-	if (singleMode){
-		for (i = 0; i < 2; i++){			// Loop to write each bit in the byte, LS-bit first
-			(*bus_).sendByte(command[i]);	// shift the data byte for the next bit
+	else{
+		(*bus_).sendByte(MATCH_ROM);
+		for (i = 0; i < 8; i++){					// Loop to write ROM address to bus
+			(*bus_).sendByte(*(address + i));
 		}
 	}
-	i = 0;
+	(*bus_).sendByte(READ_SCRATCH);
+
+	
 	for (i = 0; i < 9; i++){
 		data[i] = (*bus_).receiveByte();
 	}
-	return calcCRC8(data, 9);	
+	if (calcCRC8(data,9)) return 0;					// calculate CRC8 from data if unsuccessful return 0
+	return (data[4] >> 5) + 9;						// if data correct return set resolution
+}
+
+uint8_t OwDS18B20::convertTemp(uint8_t* address){
+	int i;
+	
+	if (!(*interface_).reset()) return 0;
+	if (!address){
+		(*bus_).sendByte(SKIP_ROM);
+	}
+	else{
+		(*bus_).sendByte(MATCH_ROM);	
+		for (i = 0; i < 8; i++){					// Loop to write ROM address to bus
+			(*bus_).sendByte(*(address + i));
+		}
+	}
+	(*bus_).sendByte(CONVERT_T);
+	return 1;
+}
+
+uint8_t OwDS18B20::receiveTemp(uint8_t* address){
+	int i = 0;
+	
+	if(!(*interface_).reset()) return 0;			// if reset fault return with 0
+	if (!address){									// ROM address not set only select device with 0xCC (SkipROM)
+		(*bus_).sendByte(SKIP_ROM);
+	}
+	else{
+		(*bus_).sendByte(MATCH_ROM);				// ROM address is set select device with 0x55 (MatchROM)
+		for (i = 0; i < 8; i++){					// Loop to write ROM address to bus
+			(*bus_).sendByte(*(address + i));
+		}
+	}
+	(*bus_).sendByte(READ_SCRATCH);					// command to read scratch pad from device
+	for (i = 0; i < 9; i++){						// receive data from sensor
+		data_[i] = (*bus_).receiveByte();
+	}
+	return !calcCRC8(data_, 9);						// calculate CRC8 from data if successful return 1
 }
 
 uint16_t OwDS18B20::getTemp(){
-	return (uint16_t)((data[1] << 8) | data[0]) * 10 / 16;
+	return (uint16_t)((data_[1] << 8) | data_[0]) * 10 / 16;
 }

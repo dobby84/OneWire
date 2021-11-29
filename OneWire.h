@@ -46,12 +46,9 @@ class OwInterface{
 class OwBus{
 	private:
 		OwInterface* interface_;	// pointer to binded interface
-		bool singleDevice_;			// set bit means only one device is on bus
 		bool isBussy_;
 	public:
 		bool reset();
-		void setSingleDevice(bool);
-		bool getSingleDevice();
 		void sendByte(uint8_t);
 		uint8_t receiveByte();
 		// void sendStream(uint8_t);
@@ -74,12 +71,12 @@ class OwDevice{
 		OwInterface* interface_;
 		OwBus* bus_;				// pointer to binded bus
 	private:
-		uint8_t _instances = 0;
+		uint8_t instances_ = 0;
 		//* variables for OneWire Search
 		uint8_t lastDiscrepancy_ = 0;
 		uint8_t lastFamilyDiscrepancy_ = 0;
 		bool lastDeviceFlag_ = false;
-		uint8_t idBitNumber_ = 0;
+		uint8_t idBitNumber_ = 1;
 		uint8_t lastZero_ = 0;
 		bool idBit_ = false;
 		bool cmpIdBit_ = false;
@@ -99,13 +96,13 @@ class OwDevice{
 
 class OwDS18B20 : private OwDevice{
 	private:
-		int temp;
-		uint8_t data[9];
+		int temp_;
+		uint8_t data_[9];
 	public:
-		bool setResolution(uint8_t);
-		uint8_t getResolution();
-		void convertTemp(bool);
-		uint8_t receiveTemp(bool);
+		bool setResolution(uint8_t*, uint8_t);
+		uint8_t getResolution(uint8_t*);
+		uint8_t convertTemp(uint8_t*);
+		uint8_t receiveTemp(uint8_t*);
 		uint16_t getTemp();
 		OwDS18B20(OwBus&);
 };
