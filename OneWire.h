@@ -46,16 +46,13 @@ class OwInterface{
 class OwBus{
 	private:
 		OwInterface* interface_;	// pointer to binded interface
-		bool isBussy_;
 	public:
 		bool reset();
 		void sendByte(uint8_t);
 		uint8_t receiveByte();
-		// void sendStream(uint8_t);
 		OwBus(OwInterface&);
 		
 		friend class OwDevice;
-
 };
 
 /*-------------------------------------------------------------------------------------------------
@@ -68,12 +65,10 @@ class OwBus{
 */
 class OwDevice{
 	protected:
-		OwInterface* interface_;
-		OwBus* bus_;				// pointer to binded bus
+		OwInterface* interface_;				// pointer to binded interface
+		OwBus* bus_;							// pointer to binded bus
 	private:
-		uint8_t instances_ = 0;
-		//* variables for OneWire Search
-		uint8_t lastDiscrepancy_ = 0;
+		uint8_t lastDiscrepancy_ = 0;			//* variables for OneWire Search
 		uint8_t lastFamilyDiscrepancy_ = 0;
 		bool lastDeviceFlag_ = false;
 		uint8_t idBitNumber_ = 1;
@@ -83,28 +78,44 @@ class OwDevice{
 		bool searchDirection_ = false;
 		uint8_t bitMask_ = 1;
 		uint8_t byteMask_ = 0;
-	public:
 		uint8_t romNo_[8];
+		uint8_t data_[9];
 	public:
-		OwDevice(OwBus&);
 		bool search();
+		void matchRom(uint8_t*);
 		void resetSearch();
+		OwDevice(OwBus&);
 	protected:		
 		uint8_t calcCRC8(const uint8_t*, uint8_t);
 		uint8_t tableCRC8(uint8_t*, uint8_t);
+		uint8_t writeScratch(uint8_t*, uint8_t, uint8_t = 255, uint8_t = 0);
+		uint8_t copyScratch(uint8_t*, uint8_t);
 };
 
 class OwDS18B20 : private OwDevice{
 	private:
-		int temp_;
 		uint8_t data_[9];
 	public:
-		bool setResolution(uint8_t*, uint8_t);
-		uint8_t getResolution(uint8_t*);
-		uint8_t convertTemp(uint8_t*);
-		uint8_t receiveTemp(uint8_t*);
-		uint16_t getTemp();
+		bool setResolution(uint8_t* = 0, uint8_t = 12);
+		uint8_t getResolution(uint8_t* = 0);
+		bool convertT(uint8_t* = 0);
+		bool receiveTemp(uint8_t* = 0);
+		uint16_t getTempRaw();
+		float getTempFloat();
 		OwDS18B20(OwBus&);
+};
+
+class OwDS2438 : private OwDevice{
+	public:
+		uint8_t data_[9];
+	public:
+		uint8_t setConfiguration(uint8_t*, uint8_t, uint8_t = 0, uint8_t = 0);
+		bool convertV(uint8_t* = 0);
+		bool recallMemory(uint8_t* = 0, uint8_t = 0x00);
+		bool receiveVolt(uint8_t* = 0, uint8_t = 0x00);
+		uint16_t getVoltRaw();
+		float getVoltFloat();
+		OwDS2438(OwBus&);
 };
 
 #endif /* ONEWIRE_H_ */

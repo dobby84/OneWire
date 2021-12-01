@@ -7,7 +7,7 @@
 
 //#define OVERDRIVE
 
-#ifndef OVERDRIVE			/* Time definition from Maxim application node */
+#ifndef OVERDRIVE			// Time definition from Maxim application node
 	#define _timeA 6		// Write: time for "1" bit
 	#define _timeB 54		// Write: time keep bus high after writing "1" bit (64us - 10us = 54us)
 	#define _timeC 54		// Write: time for "0" bit (60us - 6us = 54us)
@@ -28,7 +28,10 @@
 #define SKIP_ROM 0xCC
 #define READ_SCRATCH 0xBE
 #define CONVERT_T 0x44
+#define CONVERT_V 0xB4
 #define WRITE_SCRATCH 0x4E
+#define RECALL_MEMORY 0xB8
+#define COPY_SCRATCH 0x48
 
 
 #define F_CPU 16000000UL
@@ -112,7 +115,7 @@ bool OwBus::reset(){
 
 void OwBus::sendByte(uint8_t bData){
 	int i;
-	for (i = 0; i < 8; i++){			// Loop to write each bit in the byte, LS-bit first
+	for (i = 0; i < 8; i++){					// Loop to write each bit in the byte, LS-bit first
 		(*interface_).writeBit(bData & 0x01);	// shift the data byte for the next bit
 		bData >>= 1;
 	}
@@ -128,18 +131,6 @@ uint8_t OwBus::receiveByte(){
 	return result;
 }
 
-/*
-void OwBus::sendStream(uint8_t data[]){
-	uint8_t i = 0;
-	if (!(*interface_).reset()) return 0;
-	for (i = 0; i < 5; i++){				// Loop to write each bit in the byte, LS-bit first
-		sendByte(data[i]);	// shift the data byte for the next bit
-	}
-}
-*/
-
-
-
 /*-------------------------------------------------------------------------------------------------
 * OneWire Device
 *--------------------------------------------------------------------------------------------------
@@ -150,20 +141,17 @@ OwDevice::OwDevice(OwBus& bus){
 }
 
 bool OwDevice::search(){
-	// perform one wire reset
-	if (!(*interface_).reset() || lastDeviceFlag_){
+	if (!(*interface_).reset() || lastDeviceFlag_){		// perform one wire reset
 		lastDiscrepancy_ = 0;
 		lastFamilyDiscrepancy_ = 0;
 		lastDeviceFlag_ = false;
 		return 0;
 	}
-	// initialize variables for search
-	idBitNumber_ = 1;
+	idBitNumber_ = 1;									// initialize variables for search
 	lastZero_ = 0;
 	byteMask_ = 0;
 	bitMask_ = 1;
-	// start search with one wire command 0xF0
-	(*bus_).sendByte(0xF0);
+	(*bus_).sendByte(0xF0);								// start search with one wire command 0xF0
 		
 	do{
 		idBit_ = (*interface_).readBit();
@@ -215,7 +203,7 @@ bool OwDevice::search(){
 	lastDiscrepancy_ = lastZero_;
 	
 	if (lastDiscrepancy_ == 0) lastDeviceFlag_ = true;
-	if ((calcCRC8((uint8_t*)romNo_, 8)) == 0){  // (calcCRC8((uint8_t*)romNo_, 8))==0
+	if ((calcCRC8((uint8_t*)romNo_, 8)) == 0){			// (calcCRC8((uint8_t*)romNo_, 8))==0
 		return 1;
 	}
 	else{
@@ -223,6 +211,15 @@ bool OwDevice::search(){
 		lastFamilyDiscrepancy_ = 0;
 		lastDeviceFlag_ = false;
 		return 0;
+	}
+}
+
+void OwDevice::matchRom(uint8_t* address){
+	uint8_t i = 0;
+	
+	(*bus_).sendByte(MATCH_ROM);
+	for (i = 0; i < 8; i++){					// Loop to write ROM address to bus
+		(*bus_).sendByte(*(address + i));
 	}
 }
 
@@ -260,6 +257,74 @@ uint8_t OwDevice::tableCRC8(uint8_t *p, uint8_t len)
 	}
 	return crc & 0xFF;
 }
+//----------------------------------------------------------------------------------------------------------------------
+// Writes data to the scratch pad and validates of correct transmission. Validation for correct transmission is
+// optional and disable by default.
+//
+// parameter 1  - ROM address of OneWire device
+// parameter 2  - byte to write in scratch pad
+// parameter 3  - page of scratch pad which is to be written
+// parameter 4  - enable/disable of validation for transmission (1 = enable)
+//
+// return 1 - transmission successful
+// return 2 - reset fault
+// return 3 - CRC fault
+// return 4 - data transmission fault
+//
+uint8_t OwDevice::writeScratch(uint8_t* address, uint8_t data, uint8_t page, uint8_t valid){
+	uint8_t i = 0;
+	
+	if (!(*interface_).reset()) return 2;			// write data to device
+	if (!address){
+		(*bus_).sendByte(SKIP_ROM);
+	}
+	else{
+		matchRom(address);
+	}
+	(*bus_).sendByte(WRITE_SCRATCH);
+	if (page != 255) (*bus_).sendByte(page);
+	(*bus_).sendByte(data);
+	
+	if (valid){
+		if (!(*interface_).reset()) return 2;		// Read and validate data from device
+		if (!address){
+			(*bus_).sendByte(SKIP_ROM);
+		}
+		else{
+			matchRom(address);
+		}
+		(*bus_).sendByte(READ_SCRATCH);
+		if (page != 255) (*bus_).sendByte(page);
+		
+		for (i = 0; i < 9; i++){
+			data_[i] = (*bus_).receiveByte();
+		}
+		if (calcCRC8(data_, 9)) return 3;
+		if (data_[0] != data) return 4;
+	}
+	return 1;
+}
+//----------------------------------------------------------------------------------------------------------------------
+// Copies the scratch pad to target page in SRAM/EEPROM.
+//
+// parameter 1  - ROM address of OneWire device
+// parameter 2  - destination page of VRAM/EEPROM register which is to be written
+//
+// return 1 - configuration successful
+// return 2 - reset fault
+//
+uint8_t OwDevice::copyScratch(uint8_t* address, uint8_t page){
+	if (!(*interface_).reset()) return 2;		// Copy scratch pad to SRAM/EEPROM
+	if (!address){
+		(*bus_).sendByte(SKIP_ROM);
+	}
+	else{
+		matchRom(address);
+	}
+	(*bus_).sendByte(COPY_SCRATCH);
+	(*bus_).sendByte(page);
+	return 1;
+}
 
 OwDS18B20::OwDS18B20(OwBus& bus) : OwDevice::OwDevice (bus){
 	bus_ = &bus;
@@ -274,10 +339,7 @@ bool OwDS18B20::setResolution(uint8_t* address, uint8_t resolution){
 		(*bus_).sendByte(SKIP_ROM);
 	}
 	else{
-		(*bus_).sendByte(MATCH_ROM);				// ROM address is set select device with 0x55 (MatchROM)
-		for (i = 0; i < 8; i++){					// Loop to write ROM address to bus
-			(*bus_).sendByte(*(address + i));
-		}
+		matchRom(address);
 	}
 	(*bus_).sendByte(WRITE_SCRATCH);
 	commandSet[2] = ((resolution - 9) << 5) + 0x1F;
@@ -297,10 +359,7 @@ uint8_t OwDS18B20::getResolution(uint8_t* address){
 		(*bus_).sendByte(SKIP_ROM);
 	}
 	else{
-		(*bus_).sendByte(MATCH_ROM);
-		for (i = 0; i < 8; i++){					// Loop to write ROM address to bus
-			(*bus_).sendByte(*(address + i));
-		}
+		matchRom(address);
 	}
 	(*bus_).sendByte(READ_SCRATCH);
 
@@ -312,24 +371,19 @@ uint8_t OwDS18B20::getResolution(uint8_t* address){
 	return (data[4] >> 5) + 9;						// if data correct return set resolution
 }
 
-uint8_t OwDS18B20::convertTemp(uint8_t* address){
-	int i;
-	
-	if (!(*interface_).reset()) return 0;
+bool OwDS18B20::convertT(uint8_t* address){
+	if (!(*interface_).reset()) return false;
 	if (!address){
 		(*bus_).sendByte(SKIP_ROM);
 	}
 	else{
-		(*bus_).sendByte(MATCH_ROM);	
-		for (i = 0; i < 8; i++){					// Loop to write ROM address to bus
-			(*bus_).sendByte(*(address + i));
-		}
+		matchRom(address);
 	}
 	(*bus_).sendByte(CONVERT_T);
-	return 1;
+	return true;
 }
 
-uint8_t OwDS18B20::receiveTemp(uint8_t* address){
+bool OwDS18B20::receiveTemp(uint8_t* address){
 	int i = 0;
 	
 	if(!(*interface_).reset()) return 0;			// if reset fault return with 0
@@ -337,10 +391,7 @@ uint8_t OwDS18B20::receiveTemp(uint8_t* address){
 		(*bus_).sendByte(SKIP_ROM);
 	}
 	else{
-		(*bus_).sendByte(MATCH_ROM);				// ROM address is set select device with 0x55 (MatchROM)
-		for (i = 0; i < 8; i++){					// Loop to write ROM address to bus
-			(*bus_).sendByte(*(address + i));
-		}
+		matchRom(address);
 	}
 	(*bus_).sendByte(READ_SCRATCH);					// command to read scratch pad from device
 	for (i = 0; i < 9; i++){						// receive data from sensor
@@ -349,6 +400,105 @@ uint8_t OwDS18B20::receiveTemp(uint8_t* address){
 	return !calcCRC8(data_, 9);						// calculate CRC8 from data if successful return 1
 }
 
-uint16_t OwDS18B20::getTemp(){
-	return (uint16_t)((data_[1] << 8) | data_[0]) * 10 / 16;
+uint16_t OwDS18B20::getTempRaw(){					// normalize data to range of 0 to 2880 corresponds -55 to +125°C 
+	return (uint16_t)((data_[1] << 8) | data_[0]) + 880;
+}
+
+float OwDS18B20::getTempFloat(){					// calculate temperature in degrees Celsius from RAW value 
+	return (float)getTempRaw() / 16.0 - 55.0;
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Constructor of class OwDS2438
+//
+OwDS2438::OwDS2438(OwBus& bus) : OwDevice::OwDevice (bus){
+	bus_ = &bus;
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Writes the configuration to the scratch pad, validates of correct transmission and copies the scratch pad to target
+// page in SRAM/EEPROM. Validation for correct transmission is optional and disable by default.
+//
+// parameter 1  - ROM address of one wire device
+// parameter 2  - byte to write in register
+// parameter 3  - page of VRAM/EEPROM register which is to be written
+// parameter 4  - enable/disable of validation for transmission (1 = enable)
+//
+// return 1 - configuration successful
+// return 2 - reset fault
+// return 3 - CRC fault
+// return 4 - data transmission fault
+//
+uint8_t OwDS2438::setConfiguration(uint8_t* address, uint8_t config, uint8_t page, uint8_t valid){
+	uint8_t status;
+	status = writeScratch(address, config, page, valid);
+	if (status != 1) return status;
+	return 1;
+	/*
+	status = copyScratch(address, page);
+	return status;
+	*/
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Sends temperature conversation command to bus.
+//
+// return true  - successful
+// return false - reset fault
+//
+bool OwDS2438::convertV(uint8_t* address){
+	if (!(*interface_).reset()) return false;
+	if (!address){
+		(*bus_).sendByte(SKIP_ROM);
+	}
+	else{
+		matchRom(address);
+	}
+	(*bus_).sendByte(CONVERT_V);
+	return true;
+}
+
+//----------------------------------------------------------------------------------------------------------------------
+// Copies the source page from the SRAM/EEPROM to the target page in the scratchpad.
+//
+// return true  - successful
+// return false - reset fault
+//
+bool OwDS2438::recallMemory(uint8_t* address, uint8_t page){
+	if (!(*interface_).reset()) return false;
+	if (!address){
+		(*bus_).sendByte(SKIP_ROM);
+	}
+	else{
+		matchRom(address);
+	}
+	(*bus_).sendByte(RECALL_MEMORY);
+	(*bus_).sendByte(page);
+	return true;
+}
+
+bool OwDS2438::receiveVolt(uint8_t* address, uint8_t page){
+	int i = 0;
+	
+	if(!(*interface_).reset()) return 0;			// if reset fault return with 0
+	if (!address){									// ROM address not set only select device with 0xCC (SkipROM)
+		(*bus_).sendByte(SKIP_ROM);
+	}
+	else{
+		matchRom(address);
+	}
+	(*bus_).sendByte(READ_SCRATCH);					// command to read scratch pad from device
+	(*bus_).sendByte(page);
+	for (i = 0; i < 9; i++){						// receive data from sensor
+		data_[i] = (*bus_).receiveByte();
+	}
+	return !calcCRC8(data_, 9);						// calculate CRC8 from data if successful return 1
+}
+
+uint16_t OwDS2438::getVoltRaw(){					// normalize data to range of 0 to 2880 corresponds -55 to +125°C
+	return (uint16_t)((data_[4] << 8) | data_[3]);
+}
+
+float OwDS2438::getVoltFloat(){					// calculate temperature in degrees Celsius from RAW value
+	return (float)getVoltRaw() / 100.0;
 }
